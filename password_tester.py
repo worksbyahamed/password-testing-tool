@@ -105,6 +105,34 @@ def parse_hash_file(hash_file_path):
         hash_value = content
     return algorithm, hash_value
 
+def is_probably_hash(s):
+    # SHA-256 is 64 hex chars, SHA-1 is 40, MD5 is 32
+    return len(s) in (32, 40, 64) and all(c in "0123456789abcdefABCDEF" for c in s)
+
+def get_valid_hash_or_password():
+    while True:
+        hash_input = input("Enter the hash to test against (or plain text password): ").strip()
+        if ":" in hash_input:
+            algorithm, value = hash_input.split(":", 1)
+            algorithm = algorithm.lower()
+            if is_probably_hash(value):
+                return algorithm, value
+            else:
+                print(Fore.RED + "[!] The value after ':' does not look like a valid hash." + Style.RESET_ALL if COLORAMA_AVAILABLE else "[!] The value after ':' does not look like a valid hash.")
+                continue
+        elif is_probably_hash(hash_input):
+            # Assume SHA-256 if not specified
+            return "sha256", hash_input
+        else:
+            # Assume plain text password, hash it
+            if COLORAMA_AVAILABLE:
+                print(Fore.YELLOW + "[!] Input does not look like a hash. Treating as plain text password and hashing with SHA-256." + Style.RESET_ALL)
+            else:
+                print("[!] Input does not look like a hash. Treating as plain text password and hashing with SHA-256.")
+            hashed = hash_password(hash_input, "sha256")
+            print(f"[i] SHA-256 hash of your password is: {hashed}")
+            return "sha256", hashed
+
 def local_hash_test(wordlist, algorithm, target_hash, delay=0.5):
     start_time = time.time()
     found = False
@@ -191,14 +219,7 @@ def main():
 
     if args.mode == "local":
         if not args.hash_file:
-            print("Enter the hash to test against (or provide --hash-file):")
-            hash_input = input("Hash (or algorithm:hash): ").strip()
-            if ":" in hash_input:
-                algorithm, target_hash = hash_input.split(":", 1)
-                algorithm = algorithm.lower()
-            else:
-                algorithm = "sha256"
-                target_hash = hash_input
+            algorithm, target_hash = get_valid_hash_or_password()
         else:
             algorithm, target_hash = parse_hash_file(args.hash_file)
         print(f"\n[+] Loaded {len(wordlist)} passwords from wordlist.")
@@ -225,4 +246,11 @@ def main():
         )
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        if COLORAMA_AVAILABLE:
+            print(Fore.RED + "\n[!] Interrupted by user. Exiting gracefully." + Style.RESET_ALL)
+        else:
+            print("\n[!] Interrupted by user. Exiting gracefully.")
+        sys.exit(0)
